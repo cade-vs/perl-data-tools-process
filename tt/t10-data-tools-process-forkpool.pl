@@ -304,5 +304,38 @@ is( $? >> 8, 5, 'foreign child exit code is intact' );
 ok( stop_pool( $R ), 'stopped' );
 
 ##############################################################################
+# fpool_wait_all() with timeout
+##############################################################################
+
+my $W = 'WAITALL';
+my @wpids = map { fpool_fork_one( $W, \&worker, 'W' ) } 1 .. 2;
+is( fpool_count( $W ), 2, 'started 2 processes' );
+fpool_send_to( $W, $_, 'QUIT' ) for @wpids;
+sleep( 0.5 );
+
+my $wt = time();
+is( fpool_wait_all( $W, 5 ), 2, 'fpool_wait_all() with timeout counts reaped processes' );
+ok( time() - $wt < 2, 'fpool_wait_all() with timeout returns when pool is empty' );
+is( fpool_count( $W ), 0, 'fpool_wait_all() with timeout reaped all' );
+
+fpool_fork_one( $W, \&worker, 'W' );
+$wt = time();
+is( fpool_wait_all( $W, 1 ), undef, 'fpool_wait_all() timeout with running process reaps none' );
+my $wd = time() - $wt;
+ok( $wd >= 0.9 && $wd < 2.5, 'fpool_wait_all() waits about the timeout' );
+is( fpool_count( $W ), 1, 'running process still counted' );
+ok( stop_pool( $W ), 'stopped' );
+
+my $wpid = fpool_fork_one( $W, sub { sleep( 1.5 ); 0 } );
+ok( $wpid > 0, 'started late-exiting process' );
+$wt = time();
+is( fpool_wait_all( $W, 5 ), 1, 'fpool_wait_all() with timeout reaps process exiting during the wait' );
+ok( time() - $wt < 4, 'fpool_wait_all() returns soon after the last exit' );
+
+fpool_fork_one( $W, sub { 0 } );
+sleep( 0.5 );
+is( fpool_wait_all( $W, -1 ), 1, 'fpool_wait_all() with negative timeout still reaps exited' );
+
+##############################################################################
 
 done_testing();
